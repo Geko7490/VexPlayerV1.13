@@ -1,10 +1,11 @@
+
 name: Build VEX MUSIC Debug APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -32,23 +33,34 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-with:
-  packages: 'platform-tools'
+        with:
+          packages: 'platform-tools'
 
-      - name: Set up Gradle (with cache)
+      - name: Install required Android SDK packages
+        run: |
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false
 
-      - name: Make gradlew executable
+      - name: Verify project files
+        run: |
+          echo "Checking Android project..."
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          test -f gradle/wrapper/gradle-wrapper.properties
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradlew
+          echo "All required project files found."
+
+      - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Generate Gradle wrapper if missing
-        run: |
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version 8.7 --distribution-type bin
-            chmod +x ./gradlew
-          fi
+      - name: Show Gradle version
+        run: ./gradlew --version
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
@@ -59,10 +71,20 @@ with:
       - name: Verify APK exists
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -f "$APK" || { echo "APK was not produced"; exit 1; }
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK was not produced."
+            exit 1
+          fi
+
           SIZE=$(stat -c%s "$APK")
           echo "APK size: $SIZE bytes"
-          test "$SIZE" -gt 1000000 || { echo "APK looks empty"; exit 1; }
+
+          if [ "$SIZE" -lt 1000000 ]; then
+            echo "ERROR: APK size looks unexpectedly small."
+            exit 1
+          fi
+
           ls -lh "$APK"
 
       - name: Upload debug APK artifact
@@ -78,6 +100,6 @@ with:
         uses: actions/upload-artifact@v4
         with:
           name: VEX-MUSIC-unit-test-report
-          path: app/build/reports/tests/testDebugUnitTest
+          path: app/build/reports/tests/testDebugUnitTest/
           if-no-files-found: ignore
           retention-days: 7
