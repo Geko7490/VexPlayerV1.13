@@ -3,17 +3,18 @@ package com.vexmusic.player.player.controller
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.google.common.util.concurrent.MoreExecutors
 import com.vexmusic.player.domain.model.RepeatMode
 import com.vexmusic.player.domain.model.Track
 import com.vexmusic.player.player.service.PlaybackService
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,6 +59,8 @@ class PlayerController(
         if (controller != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()
+        // The future may complete on a binder/background thread. Always attach and access
+        // the MediaController on the application's main thread.
         future.addListener({
             runCatching { future.get() }.onSuccess { c ->
                 controller = c
@@ -65,13 +68,17 @@ class PlayerController(
                 syncState()
                 startTicker()
             }
-        }, MoreExecutors.directExecutor())
+        }, ContextCompat.getMainExecutor(context))
     }
 
     fun release() {
-        controller?.removeListener(listener)
-        controller?.release()
-        controller = null
+        // MediaController methods must be called on its application looper (main here).
+        scope.launch(Dispatchers.Main.immediate) {
+            controller?.removeListener(listener)
+            controller?.release()
+            controller = null
+            _state.value = PlaybackState()
+        }
     }
 
     private val listener = object : Player.Listener {
@@ -82,10 +89,12 @@ class PlayerController(
     }
 
     private fun startTicker() {
-        scope.launch {
-            while (true) {
+        // The injected scope may use IO/Default. MediaController must only be queried
+        // from its application thread, so explicitly pin the ticker to Main.
+        scope.launch(Dispatchers.Main.immediate) {
+            while (controller != null) {
                 delay(500)
-                val c = controller ?: continue
+                val c = controller ?: break
                 if (c.isPlaying) syncState()
             }
         }
