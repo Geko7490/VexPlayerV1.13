@@ -1,4 +1,4 @@
-
+l
 name: Build VEX MUSIC Debug APK
 
 on:
@@ -36,44 +36,40 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      - name: Install required Android SDK packages
+      - name: Install Android SDK packages
         run: |
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: '8.7'
           cache-read-only: false
 
-      - name: Verify project files
+      - name: Verify Android project
         run: |
           echo "Checking Android project..."
           test -f settings.gradle.kts
           test -f build.gradle.kts
           test -f app/build.gradle.kts
           test -f gradle/wrapper/gradle-wrapper.properties
-          test -f gradle/wrapper/gradle-wrapper.jar
-          test -f gradlew
-          echo "All required project files found."
-
-      - name: Make Gradle wrapper executable
-        run: chmod +x ./gradlew
+          echo "Project files verified."
 
       - name: Show Gradle version
-        run: ./gradlew --version
+        run: gradle --version
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: gradle testDebugUnitTest --stacktrace
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
-      - name: Verify APK exists
+      - name: Verify APK
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERROR: APK was not produced."
+            echo "ERROR: APK was not generated."
             exit 1
           fi
 
@@ -81,13 +77,13 @@ jobs:
           echo "APK size: $SIZE bytes"
 
           if [ "$SIZE" -lt 1000000 ]; then
-            echo "ERROR: APK size looks unexpectedly small."
+            echo "ERROR: APK size is unexpectedly small."
             exit 1
           fi
 
           ls -lh "$APK"
 
-      - name: Upload debug APK artifact
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: VEX-MUSIC-Android-Debug
